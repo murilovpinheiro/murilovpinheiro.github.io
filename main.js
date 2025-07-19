@@ -133,6 +133,7 @@ function computeOrdersByDay(orders) {
         .sort((a, b) => new Date(a.date) - new Date(b.date));
 }
 
+// esse pega pelo destino
 function computeOrdersByCity(orders) {
     const cityCounts = new Map();
     for (const order of orders) {
@@ -163,6 +164,7 @@ function computePaymentsByType(payments) {
         .map(([payment_type, total_value]) => ({ payment_type, total_value }));
 }
 
+//esse pega pelo destino
 function computeOrdersByState(orders, custMap) {
     const counts = new Map();
 
@@ -253,7 +255,7 @@ function renderLineChart(category, orders, orderItems, products) {
             )
     ])
         .data(ordersByDay)
-        .width(800)
+        .width(750)
         .height(400)
         .padding({ bottom: 60, left: 40, right: 40, top: 40 })
         .title({ text: "Número de pedidos ao longo do tempo", font: "sans-serif",color:"#e0e1dd"})
@@ -286,8 +288,8 @@ function renderBarChart(category, orders, orderItems, products) {
                 { field: "orders", type: "quantitative", title: "Pedidos", format: ".0f" }
             ])
         )
-        .width(400)
-        .height(300)
+        .width(360)
+        .height(360)
         .padding({ left: 65 })
         .title({ text: "Top 10 Cidades Brasileiras com Mais Pedidos", font: "sans-serif", color: "#e0e1dd" })
         .config({
@@ -325,8 +327,8 @@ function renderPieChart(category, orders, orderItems, products, payments) {
                 { field: "total_value", type: "quantitative", title: "Valor Total", format: ".2f" }
             ])
         )
-        .width(280)
-        .height(280)
+        .width(260)
+        .height(260)
         .padding(10)
         .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif", color: "#e0e1dd" })
         .config({
@@ -367,7 +369,7 @@ async function renderMapChart(category, orders, orderItems, products, customers_
                         scheme: "blues" // funciona bem em fundo escuro
                     })
                     .legend({
-                    title: "Número de Pedidos", // <- muda aqui
+                    title: "Log Número de Pedidos", // <- muda aqui
                     titleColor: "#e0e1dd",
                     labelColor: "#e0e1dd"
                 }),
@@ -377,7 +379,7 @@ async function renderMapChart(category, orders, orderItems, products, customers_
                 ])
             )
             .project(vl.projection("mercator"))
-            .width(800)
+            .width(600)
             .height(600)
             .config({
                 background: "#0b051d",
@@ -430,4 +432,4 @@ async function init() {
 
 init();
 
-// lembrar de diferenciar que o mapa é a de origem e o bar é a de chegada, ou vice e versa
+// lembrar de diferenciar o mapa é a de origem e o bar é a de chegada, ou vice e versa
