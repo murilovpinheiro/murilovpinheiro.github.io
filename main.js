@@ -158,7 +158,8 @@ vl.markBar()
     .height(400)
     .padding({ left: 65 })
     .title({ text: "Top 10 Brazilian Cities with More Orders", font: "sans-serif" })
-    .render()
+    .render().then(view => document.getElementById("view").appendChild(view))
+    .catch(console.error);
 
 vl.markArc({outerRadius: 120 })
     .data(paymentsByType)
@@ -175,7 +176,8 @@ vl.markArc({outerRadius: 120 })
     .height(400)
     .padding(40)
     .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif" })
-    .render()
+    .render().then(view => document.getElementById("view").appendChild(view))
+    .catch(console.error);
 
 /*
 vl
