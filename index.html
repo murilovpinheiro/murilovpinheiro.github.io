@@ -5,19 +5,87 @@
     <title>Olist Dashboard</title>
     <script type="module" src="./main.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 1em; }
-        #view { overflow-x: auto; }
+        body {
+            margin: 0;
+            font-family: sans-serif;
+            background-color: #0b051d; /* azul escuro */
+            color: #e0e1dd; /* texto claro */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2em;
+        }
+
+        h1 {
+            margin-bottom: 1em;
+            color: #ffffff;
+        }
+
+        #category-select {
+            margin: 1.5em 0;
+            background-color: #10072c;
+            padding: 1em;
+            border-radius: 8px;
+            color: #e0e1dd;
+        }
+
+        #radio-buttons label {
+            margin-right: 1em;
+        }
+
+        /* Dashboard layout */
+        .dashboard {
+            display: grid;
+            grid-template-areas:
+        "line_chart pie_chart"
+        "map_chart bar_chart";
+            grid-template-columns: 70% 30%;
+            gap: 1.5em;
+            width: 100%;
+            max-width: 90%;
+        }
+
+        #line_chart,
+        #pie_chart,
+        #map_chart,
+        #bar_chart {
+            display: flex;              /* ativa flexbox */
+            align-items: center;        /* alinha verticalmente */
+            justify-content: center;    /* alinha horizontalmente */
+            height: 100%;               /* garantir que tenha altura para alinhar verticalmente */
+            width: 100%;                /* opcional */
+        }
+
+        #line_chart {
+            grid-area: line_chart;
+        }
+
+        #pie_chart {
+            grid-area: pie_chart;
+        }
+
+        #map_chart {
+            grid-area: map_chart;
+        }
+
+        #bar_chart {
+            grid-area: bar_chart;
+        }
     </style>
 </head>
 <body>
 <h1>Visualização Olist</h1>
-<div id="view"></div>
-<div id="view2"></div>
-<div id="view3"></div>
-<div id="view4"></div>
 <div id="category-select">
     <label>Selecione uma categoria:</label>
     <div id="radio-buttons"></div>
 </div>
+<div class="dashboard">
+    <div id="map_chart"></div>
+    <div id="line_chart"></div>
+    <div id="bar_chart"></div>
+    <div id="pie_chart"></div>
+</div>
 </body>
 </html>
+
+

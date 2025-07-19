@@ -234,17 +234,14 @@ function renderLineChart(category, orders, orderItems, products) {
     const ordersByDay = computeOrdersByDay(filteredOrders);
     console.log("ordersByDay");
 
-    document.getElementById("view3").innerHTML = "";
+    document.getElementById("line_chart").innerHTML = "";
 
     vl.layer([
-        // Linha principal
         vl.markLine({ interpolate: "linear", stroke: "#1f77b4" })
             .encode(
                 vl.x().fieldT("date"),
                 vl.y().fieldQ("count").title("Número de pedidos").axis({ grid: true })
             ),
-
-        // Pontos invisíveis para aumentar área de hover
         vl.markPoint({ opacity: 0, size: 100 })  // aumenta a área de detecção
             .encode(
                 vl.x().fieldT("date"),
@@ -256,40 +253,53 @@ function renderLineChart(category, orders, orderItems, products) {
             )
     ])
         .data(ordersByDay)
-        .width(1000)
+        .width(800)
         .height(400)
         .padding({ bottom: 60, left: 40, right: 40, top: 40 })
-        .title({ text: "Número de pedidos ao longo do tempo", font: "sans-serif" })
-        .render().then(view => document.getElementById("view3").appendChild(view))
+        .title({ text: "Número de pedidos ao longo do tempo", font: "sans-serif",color:"#e0e1dd"})
+        .config({
+            background: "#0b051d",
+            axis: {
+                labelColor: "#e0e1dd",
+                titleColor: "#e0e1dd",
+                gridColor: "#3a506b"
+            }
+        })
+        .render().then(view => document.getElementById("line_chart").appendChild(view))
         .catch(console.error);
 }
 
-
 function renderBarChart(category, orders, orderItems, products) {
     const filteredOrders = filterOrders(orders, orderItems, products, category);
-    console.log("filteredOrders");
     const ordersByCity = computeOrdersByCity(filteredOrders);
-    console.log("ordersByDay");
 
-    document.getElementById("view4").innerHTML = "";
-
+    document.getElementById("bar_chart").innerHTML = "";
 
     vl.markBar()
         .data(ordersByCity)
         .encode(
             vl.x().fieldQ("orders").title("Número de Pedidos").axis({ grid: true }),
             vl.y().fieldN("city").title(null).sort({ field: "orders", order: "descending" }).axis({ labelAngle: 0 }),
-            vl.color().value("#1f77b4"),
+            vl.color().value("#8ecae6"), // azul claro
             vl.tooltip([
                 { field: "city", type: "nominal", title: "Cidade" },
                 { field: "orders", type: "quantitative", title: "Pedidos", format: ".0f" }
             ])
         )
-        .width(800)
-        .height(400)
+        .width(400)
+        .height(300)
         .padding({ left: 65 })
-        .title({ text: "Top 10 Brazilian Cities with More Orders", font: "sans-serif" })
-        .render().then(view => document.getElementById("view4").appendChild(view))
+        .title({ text: "Top 10 Cidades Brasileiras com Mais Pedidos", font: "sans-serif", color: "#e0e1dd" })
+        .config({
+            background: "#0b051d",
+            axis: {
+                labelColor: "#e0e1dd",
+                titleColor: "#e0e1dd",
+                gridColor: "#3a506b"
+            }
+        })
+        .render()
+        .then(view => document.getElementById("bar_chart").appendChild(view))
         .catch(console.error);
 }
 
@@ -297,26 +307,37 @@ function renderPieChart(category, orders, orderItems, products, payments) {
     const filteredPayments = filterPaymentsByCategory(orders, orderItems, products, payments, category);
     const paymentsByType = computePaymentsByType(filteredPayments);
 
-    // Limpa o gráfico anterior
-    document.getElementById("view2").innerHTML = "";
+    document.getElementById("pie_chart").innerHTML = "";
 
     vl.markArc({ outerRadius: 120 })
         .data(paymentsByType)
         .encode(
             vl.theta().fieldQ("total_value").aggregate("sum"),
-            vl.color().fieldN("payment_type").scale({ scheme: "category10" }).legend({ title: "Tipo de Pagamento" }),
+            vl.color()
+                .fieldN("payment_type")
+                .scale({
+                    domain: ["credit_card", "boleto", "voucher", "debit_card"],
+                    range: ["#1bbfe9", "#7461a5", "#3b5dac", "#7bc895"]})
+                .legend({ title: "Tipo de Pagamento", labelColor: "#e0e1dd", titleColor: "#e0e1dd", offset:0}),
             vl.order().fieldQ("total_value").sort("descending"),
             vl.tooltip([
                 { field: "payment_type", type: "nominal", title: "Tipo de Pagamento" },
                 { field: "total_value", type: "quantitative", title: "Valor Total", format: ".2f" }
             ])
         )
-        .width(400)
-        .height(400)
-        .padding(40)
-        .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif" })
+        .width(280)
+        .height(280)
+        .padding(10)
+        .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif", color: "#e0e1dd" })
+        .config({
+            background: "#0b051d",
+            axis: {
+                labelColor: "#e0e1dd",
+                titleColor: "#e0e1dd"
+            }
+        })
         .render()
-        .then(view => document.getElementById("view2").appendChild(view))
+        .then(view => document.getElementById("pie_chart").appendChild(view))
         .catch(console.error);
 }
 
@@ -324,18 +345,13 @@ async function renderMapChart(category, orders, orderItems, products, customers_
     try {
         const geoStates = await d3.json("https://raw.githubusercontent.com/giuliano-macedo/geodata-br-states/master/geojson/br_states.json");
         const custMap = new Map(customers_geo.map(c => [c.customer_id, c.customer_state]));
-        console.log(custMap)
-        // Extrai orders filtrados (lembrando que filterOrders retorna objeto { orders, ... })
         const filteredOrders = filterOrders(orders, orderItems, products, category, category);
-
-        // Calcula pedidos por estado
         const pedidosPorEstado = computeOrdersByState(filteredOrders, custMap);
 
-        document.getElementById("view").innerHTML = "";
+        document.getElementById("map_chart").innerHTML = "";
 
-        // Monta o gráfico com Vega-Lite API (vl)
         vl.markGeoshape({ stroke: "#000000", strokeWidth: 0.5 })
-            .data(geoStates.features) // features do GeoJSON
+            .data(geoStates.features)
             .transform(
                 vl.lookup("id")
                     .from(vl.data(pedidosPorEstado).key("estado").fields(["estado", "pedidos"]))
@@ -347,21 +363,33 @@ async function renderMapChart(category, orders, orderItems, products, customers_
                     .fieldQ("Pedidos")
                     .scale({
                         type: "log",
-                        domain: [1, d3.max(pedidosPorEstado, d => d.pedidos) || 10], // valor padrão 10 se vazio
-                        scheme: "blues"
-                    }),
+                        domain: [1, d3.max(pedidosPorEstado, d => d.pedidos) || 10],
+                        scheme: "blues" // funciona bem em fundo escuro
+                    })
+                    .legend({
+                    title: "Número de Pedidos", // <- muda aqui
+                    titleColor: "#e0e1dd",
+                    labelColor: "#e0e1dd"
+                }),
                 vl.tooltip([
                     { field: "estado", title: "Estado" },
                     { field: "Pedidos", title: "Número de Pedidos", type: "quantitative" }
                 ])
             )
             .project(vl.projection("mercator"))
-            .width(850)
+            .width(800)
             .height(600)
+            .config({
+                background: "#0b051d",
+                axis: {
+                    labelColor: "#e0e1dd",
+                    titleColor: "#e0e1dd",
+                    gridColor: "#3a506b"
+                }
+            })
             .render()
-            .then(view => document.getElementById("view").appendChild(view))
+            .then(view => document.getElementById("map_chart").appendChild(view))
             .catch(console.error);
-
     } catch (err) {
         console.error("Erro ao renderizar o mapa:", err);
     }
@@ -401,3 +429,5 @@ async function init() {
 }
 
 init();
+
+// lembrar de diferenciar que o mapa é a de origem e o bar é a de chegada, ou vice e versa
