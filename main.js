@@ -144,3 +144,64 @@ vl
     .render()
     .then(view => document.getElementById("view").appendChild(view))
     .catch(console.error);
+
+vl.layer([
+    // Linha principal
+    vl.markLine({ interpolate: "linear", stroke: "#1f77b4" })
+        .encode(
+            vl.x().fieldT("date"),
+            vl.y().fieldQ("count").title("Número de pedidos").axis({ grid: true })
+        ),
+
+    // Pontos invisíveis para aumentar área de hover
+    vl.markPoint({ opacity: 0, size: 100 })  // aumenta a área de detecção
+        .encode(
+            vl.x().fieldT("date"),
+            vl.y().fieldQ("count"),
+            vl.tooltip([
+                { field: "date", type: "temporal", title: "Data" },
+                { field: "count", type: "quantitative", title: "Pedidos" }
+            ])
+        )
+])
+    .data(ordersByDay)
+    .width(1000)
+    .height(400)
+    .padding({ bottom: 60, left: 40, right: 40, top: 40 })
+    .title({ text: "Número de pedidos ao longo do tempo", font: "sans-serif" })
+    .render()
+
+
+vl.markBar()
+    .data(ordersByCity)
+    .encode(
+        vl.x().fieldQ("orders").title("Número de Pedidos").axis({ grid: true }),
+        vl.y().fieldN("city").title(null).sort({ field: "orders", order: "descending" }).axis({ labelAngle: 0 }),
+        vl.color().value("#1f77b4"),
+        vl.tooltip([
+            { field: "city", type: "nominal", title: "Cidade" },
+            { field: "orders", type: "quantitative", title: "Pedidos", format: ".0f" }
+        ])
+    )
+    .width(800)
+    .height(400)
+    .padding({ left: 65 })
+    .title({ text: "Top 10 Brazilian Cities with More Orders", font: "sans-serif" })
+    .render()
+
+vl.markArc({outerRadius: 120 })
+    .data(paymentsByType)
+    .encode(
+        vl.theta().fieldQ("total_value").aggregate("sum"),
+        vl.color().fieldN("payment_type").scale({ scheme: "category10" }).legend({ title: "Tipo de Pagamento" }),
+        vl.order().fieldQ("total_value").sort("descending"),
+        vl.tooltip([
+            { field: "payment_type", type: "nominal", title: "Tipo de Pagamento" },
+            { field: "total_value", type: "quantitative", title: "Valor Total", format: ".2f" }
+        ])
+    )
+    .width(400)
+    .height(400)
+    .padding(40)
+    .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif" })
+    .render()
