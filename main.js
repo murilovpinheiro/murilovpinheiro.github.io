@@ -177,7 +177,7 @@ vl.markArc({outerRadius: 120 })
     .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif" })
     .render()
 
-
+/*
 vl
     .markGeoshape({ stroke: "#000000", strokeWidth: 0.5 })
     .data(estadosGeo.features) // ou só estadosGeo se é um array de features
@@ -206,3 +206,5 @@ vl
     .render()
     .then(view => document.getElementById("view").appendChild(view))
     .catch(console.error);
+
+ */
