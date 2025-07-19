@@ -30,43 +30,98 @@ function innerJoin(left, right, key) {
         .map(d => ({ ...d, ...map.get(d[key]) }));
 }
 
+async function loadData() {
+    const [orders,
+        orderItems, products,
+        payments, customers] = await Promise.all([
+        d3.csv("./data/olist_orders_dataset.csv"),
+        d3.csv("./data/olist_order_items_dataset.csv"),
+        d3.csv("./data/olist_products_dataset.csv"),
+        d3.csv("./data/olist_order_payments_dataset.csv"),
+        d3.csv("./data/olist_customers_dataset.csv")
+    ]);
 
-const orders         = await d3.csv("./data/olist_orders_dataset.csv")
-const order_items    = await d3.csv("./data/olist_order_items_dataset.csv")
-const sellers        = await d3.csv("./data/olist_sellers_dataset.csv")
-const payments       = await d3.csv("./data/olist_order_payments_dataset.csv")
-const geolocationRaw = await d3.csv("./data/olist_geolocation_dataset.csv")
-const customersRaw   = await d3.csv("./data/olist_customers_dataset.csv")
+    const customers_geo = customers.map(d => {
+        const {customer_city, ...rest} = d;
+        return {geolocation_city: customer_city, ...rest};
+    });
 
+    const ordersWithCity = innerJoin(orders, customers, "customer_id");
+    console.log("Rapaz deu bom!")
+    return { orders: ordersWithCity, orderItems, products, payments, customers_geo};
+}
+function filterOrders(orders, orderItems, products, category) {
+    if (!category || category === "all") {
+        return orders;
+    }
 
-const customers = customersRaw.map(d => {
-    const {customer_city, ...rest} = d;
-    return {geolocation_city: customer_city, ...rest};
-});
+    // Índice: order_id → lista de orderItems
+    const orderItemsByOrderId = new Map();
+    for (const item of orderItems) {
+        if (!orderItemsByOrderId.has(item.order_id)) {
+            orderItemsByOrderId.set(item.order_id, []);
+        }
+        orderItemsByOrderId.get(item.order_id).push(item);
+    }
 
-const geolocation = normalizeColumn(geolocationRaw, "geolocation_city");
-const customersN = normalizeColumn(customers, "geolocation_city");
+    // Índice: product_id → produto
+    const productById = new Map();
+    for (const p of products) {
+        productById.set(p.product_id, p);
+    }
 
-const join1 = innerJoin(orders, order_items, "order_id")
-const join2 = innerJoin(join1, payments, "order_id")
-const data = innerJoin(join2, sellers, "seller_id")
+    // Agora o filtro é rápido
+    return orders.filter(order => {
+        const items = orderItemsByOrderId.get(order.order_id) || [];
+        return items.some(item => {
+            const product = productById.get(item.product_id);
+            return product?.product_category_name === category;
+        });
+    });
+}
 
-const join3 = innerJoin(orders, customersN, "customer_id")
-const data2 = innerJoin(join3, geolocation, "geolocation_city")
+function filterPaymentsByCategory(orders, orderItems, products, payments, category) {
+    // Índice: order_id → lista de orderItems
+    console.log("produtos")
+    console.log(products);
+    if (!category || category === "all") {
+        return payments;
+    }
+    const orderItemsByOrderId = new Map();
+    for (const item of orderItems) {
+        if (!orderItemsByOrderId.has(item.order_id)) {
+            orderItemsByOrderId.set(item.order_id, []);
+        }
+        orderItemsByOrderId.get(item.order_id).push(item);
+    }
+    console.log(orderItemsByOrderId);
 
-const ordersByCity = Array.from(
-    d3.rollup(
-        data,
-        v => v.length,
-        d => d.seller_city // Assumindo que a cidade do vendedor reflete a cidade dos pedidos
-    ),
-    ([city, orders]) => ({ city, orders })
-).sort((a, b) => b.orders - a.orders)
-    .slice(0, 10); // Pega as 10 principais cidades
+    // Índice: product_id → produto
+    const productById = new Map();
+    for (const p of products) {
+        productById.set(p.product_id, p);
+    }
 
-const ordersByDay = (() => {
+    // Filtra order_ids que tenham produto da categoria desejada
+    const orderIdsWithCategory = new Set();
+    for (const order of orders) {
+        const items = orderItemsByOrderId.get(order.order_id) || [];
+        if (items.some(item => {
+            const product = productById.get(item.product_id);
+            return product?.product_category_name === category;
+        })) {
+            orderIdsWithCategory.add(order.order_id);
+        }
+    }
+    console.log(orderItems[0].product_id, products[0].product_id);
+
+    // Retorna pagamentos cujo order_id está no conjunto filtrado
+    return payments.filter(payment => orderIdsWithCategory.has(payment.order_id));
+}
+
+function computeOrdersByDay(orders) {
     const counts = new Map();
-    for (const order of data) {
+    for (const order of orders) {
         const date = new Date(order.order_purchase_timestamp);
         if (!isNaN(date)) {
             const day = date.toISOString().slice(0, 10);
@@ -74,138 +129,275 @@ const ordersByDay = (() => {
         }
     }
     return Array.from(counts.entries())
-        .map(([day, count]) => ({ date: new Date(day), count }))
-        .sort((a, b) => a.date - b.date);
-})();
+        .map(([day, count]) => ({ date: day, count }))
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+}
 
-const paymentsByType = Array.from(
-    d3.rollup(
-        payments,
-        v => d3.sum(v, d => +d.payment_value), // soma valores pagos
-        d => d.payment_type
-    ),
-    ([payment_type, total_value]) => ({ payment_type, total_value })
-)
+function computeOrdersByCity(orders) {
+    const cityCounts = new Map();
+    for (const order of orders) {
+        const city = order.customer_city;
+        if (city) {
+            cityCounts.set(city, (cityCounts.get(city) || 0) + 1);
+        }
+    }
+    return Array.from(cityCounts.entries())
+        .map(([city, orders]) => ({ city, orders }))
+        .sort((a, b) => b.orders - a.orders)
+        .slice(0, 10);
+}
 
-const abbreviations = {
-    "sao paulo": "São Paulo",
-    "ibitinga": "Ibitinga",
-    "curitiba": "Curitiba",
-    "santo andre": "Santo\nAndré",
-    "belo horizonte": "Belo\nHorizonte",
-    "rio de janeiro": "Rio de\nJaneiro",
-    "guarulhos": "Guarulhos",
-    "ribeirao preto": "Ribeirão\nPreto",
-    "sao jose do rio preto": "São José\ndo Rio Preto",
-    "maringa": "Maringá"
-};
+function computePaymentsByType(payments) {
+    const totals = new Map();
 
-const custMap = new Map(customers.map(c => [c.customer_id, c.customer_state]));
+    for (const payment of payments) {
+        const type = payment.payment_type;
+        const value = +payment.payment_value;
+        if (!totals.has(type)) {
+            totals.set(type, 0);
+        }
+        totals.set(type, totals.get(type) + value);
+    }
 
-// Conte pedidos por estado
-const pedidosPorEstado = Array.from(
-    orders.reduce((map, o) => {
-        const st = custMap.get(o.customer_id);
-        if (!st) return map;
-        map.set(st, (map.get(st) || 0) + 1);
-        return map;
-    }, new Map()),
-    ([estado, count]) => ({ estado, pedidos: count })
-);// Carregue o GeoJSON dos estados
+    return Array.from(totals.entries())
+        .map(([payment_type, total_value]) => ({ payment_type, total_value }));
+}
+
+function computeOrdersByState(orders, custMap) {
+    const counts = new Map();
+
+    for (const order of orders) {
+        const estado = custMap.get(order.customer_id);
+        if (!estado) continue;
+        counts.set(estado, (counts.get(estado) || 0) + 1);
+    }
+
+    return Array.from(counts.entries())
+        .map(([estado, pedidos]) => ({ estado, pedidos }))
+        // se quiser ordenar alfabeticamente:
+        .sort((a, b) => a.estado.localeCompare(b.estado));
+}
+
+/*
+const orders         = await d3.csv("./data/olist_orders_dataset.csv")
+const order_items    = await d3.csv("./data/olist_order_items_dataset.csv")
+const sellers        = await d3.csv("./data/olist_sellers_dataset.csv")
+const payments       = await d3.csv("./data/olist_order_payments_dataset.csv")
+//const geolocationRaw = await d3.csv("./data/olist_geolocation_dataset.csv")
+//const customersRaw   = await d3.csv("./data/olist_customers_dataset.csv")
+const products =       await d3.csv("./data/olist_products_dataset.csv");
+
+const customers = customersRaw.map(d => {
+    const {customer_city, ...rest} = d;
+    return {geolocation_city: customer_city, ...rest};
+});
+
+//const geolocation = normalizeColumn(geolocationRaw, "geolocation_city");
+//const customersN = normalizeColumn(customers, "geolocation_city");
+
+const join1 = innerJoin(orders, order_items, "order_id")
+const join2 = innerJoin(join1, payments, "order_id")
+const data = innerJoin(join2, sellers, "seller_id")
+*/
+
+async function initRadioButtons() {
+
+    // Get unique categories
+    const categories = [...new Set(products.map(d => d.product_category_name))].filter(Boolean);
+    let selectedCategory = categories[0] || null;
+
+    // Create radio buttons
+    d3.select("#radio-buttons")
+        .selectAll("label")
+        .data(categories)
+        .enter()
+        .append("label")
+        .style("margin-right", "10px")
+        .html(d => `
+            <input type="radio" name="category" value="${d}" ${d === selectedCategory ? "checked" : ""}>
+            ${d}
+        `);
+
+    // Return selected category for potential use
+    return selectedCategory;
+}
+
+//const custMap = new Map(customers.map(c => [c.customer_id, c.customer_state]));
+
 const estadosGeo = await d3.json(
     "https://raw.githubusercontent.com/giuliano-macedo/geodata-br-states/master/geojson/br_states.json"
 );
 
-vl.layer([
-    // Linha principal
-    vl.markLine({ interpolate: "linear", stroke: "#1f77b4" })
-        .encode(
-            vl.x().fieldT("date"),
-            vl.y().fieldQ("count").title("Número de pedidos").axis({ grid: true })
-        ),
+function renderLineChart(category, orders, orderItems, products) {
+    const filteredOrders = filterOrders(orders, orderItems, products, category);
+    console.log("filteredOrders");
+    const ordersByDay = computeOrdersByDay(filteredOrders);
+    console.log("ordersByDay");
 
-    // Pontos invisíveis para aumentar área de hover
-    vl.markPoint({ opacity: 0, size: 100 })  // aumenta a área de detecção
+    document.getElementById("view3").innerHTML = "";
+
+    vl.layer([
+        // Linha principal
+        vl.markLine({ interpolate: "linear", stroke: "#1f77b4" })
+            .encode(
+                vl.x().fieldT("date"),
+                vl.y().fieldQ("count").title("Número de pedidos").axis({ grid: true })
+            ),
+
+        // Pontos invisíveis para aumentar área de hover
+        vl.markPoint({ opacity: 0, size: 100 })  // aumenta a área de detecção
+            .encode(
+                vl.x().fieldT("date"),
+                vl.y().fieldQ("count"),
+                vl.tooltip([
+                    { field: "date", type: "temporal", title: "Data" },
+                    { field: "count", type: "quantitative", title: "Pedidos" }
+                ])
+            )
+    ])
+        .data(ordersByDay)
+        .width(1000)
+        .height(400)
+        .padding({ bottom: 60, left: 40, right: 40, top: 40 })
+        .title({ text: "Número de pedidos ao longo do tempo", font: "sans-serif" })
+        .render().then(view => document.getElementById("view3").appendChild(view))
+        .catch(console.error);
+}
+
+
+function renderBarChart(category, orders, orderItems, products) {
+    const filteredOrders = filterOrders(orders, orderItems, products, category);
+    console.log("filteredOrders");
+    const ordersByCity = computeOrdersByCity(filteredOrders);
+    console.log("ordersByDay");
+
+    document.getElementById("view4").innerHTML = "";
+
+
+    vl.markBar()
+        .data(ordersByCity)
         .encode(
-            vl.x().fieldT("date"),
-            vl.y().fieldQ("count"),
+            vl.x().fieldQ("orders").title("Número de Pedidos").axis({ grid: true }),
+            vl.y().fieldN("city").title(null).sort({ field: "orders", order: "descending" }).axis({ labelAngle: 0 }),
+            vl.color().value("#1f77b4"),
             vl.tooltip([
-                { field: "date", type: "temporal", title: "Data" },
-                { field: "count", type: "quantitative", title: "Pedidos" }
+                { field: "city", type: "nominal", title: "Cidade" },
+                { field: "orders", type: "quantitative", title: "Pedidos", format: ".0f" }
             ])
         )
-])
-    .data(ordersByDay)
-    .width(1000)
-    .height(400)
-    .padding({ bottom: 60, left: 40, right: 40, top: 40 })
-    .title({ text: "Número de pedidos ao longo do tempo", font: "sans-serif" })
-    .render().then(view => document.getElementById("view3").appendChild(view))
-    .catch(console.error);
+        .width(800)
+        .height(400)
+        .padding({ left: 65 })
+        .title({ text: "Top 10 Brazilian Cities with More Orders", font: "sans-serif" })
+        .render().then(view => document.getElementById("view4").appendChild(view))
+        .catch(console.error);
+}
 
-vl.markBar()
-    .data(ordersByCity)
-    .encode(
-        vl.x().fieldQ("orders").title("Número de Pedidos").axis({ grid: true }),
-        vl.y().fieldN("city").title(null).sort({ field: "orders", order: "descending" }).axis({ labelAngle: 0 }),
-        vl.color().value("#1f77b4"),
-        vl.tooltip([
-            { field: "city", type: "nominal", title: "Cidade" },
-            { field: "orders", type: "quantitative", title: "Pedidos", format: ".0f" }
-        ])
-    )
-    .width(800)
-    .height(400)
-    .padding({ left: 65 })
-    .title({ text: "Top 10 Brazilian Cities with More Orders", font: "sans-serif" })
-    .render().then(view => document.getElementById("view4").appendChild(view))
-    .catch(console.error);
+function renderPieChart(category, orders, orderItems, products, payments) {
+    const filteredPayments = filterPaymentsByCategory(orders, orderItems, products, payments, category);
+    const paymentsByType = computePaymentsByType(filteredPayments);
 
-vl.markArc({outerRadius: 120 })
-    .data(paymentsByType)
-    .encode(
-        vl.theta().fieldQ("total_value").aggregate("sum"),
-        vl.color().fieldN("payment_type").scale({ scheme: "category10" }).legend({ title: "Tipo de Pagamento" }),
-        vl.order().fieldQ("total_value").sort("descending"),
-        vl.tooltip([
-            { field: "payment_type", type: "nominal", title: "Tipo de Pagamento" },
-            { field: "total_value", type: "quantitative", title: "Valor Total", format: ".2f" }
-        ])
-    )
-    .width(400)
-    .height(400)
-    .padding(40)
-    .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif" })
-    .render().then(view => document.getElementById("view2").appendChild(view))
-    .catch(console.error);
+    // Limpa o gráfico anterior
+    document.getElementById("view2").innerHTML = "";
 
-console.log("opa")
+    vl.markArc({ outerRadius: 120 })
+        .data(paymentsByType)
+        .encode(
+            vl.theta().fieldQ("total_value").aggregate("sum"),
+            vl.color().fieldN("payment_type").scale({ scheme: "category10" }).legend({ title: "Tipo de Pagamento" }),
+            vl.order().fieldQ("total_value").sort("descending"),
+            vl.tooltip([
+                { field: "payment_type", type: "nominal", title: "Tipo de Pagamento" },
+                { field: "total_value", type: "quantitative", title: "Valor Total", format: ".2f" }
+            ])
+        )
+        .width(400)
+        .height(400)
+        .padding(40)
+        .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif" })
+        .render()
+        .then(view => document.getElementById("view2").appendChild(view))
+        .catch(console.error);
+}
 
-vl
-    .markGeoshape({ stroke: "#000000", strokeWidth: 0.5 })
-    .data(estadosGeo.features) // ou só estadosGeo se é um array de features
-    .transform(
-        vl.lookup("id") // usar 'id' que é a sigla do estado
-            .from(vl.data(pedidosPorEstado).key("estado").fields(["estado", "pedidos"]))
-            .as(["estado", "pedidos"]),
-        vl.calculate("datum.pedidos || 0").as("Pedidos")
-    )
-    .encode(
-        vl.color()
-            .fieldQ("Pedidos")
-            .scale({
-                type: "log",   // Aqui está a escala logarítmica
-                domain: [1, d3.max(pedidosPorEstado, d => d.pedidos)], // domain deve começar em >0, evite zero
-                scheme: "blues"
-            }),
-        vl.tooltip([
-            { field: "estado", title: "Estado" },
-            { field: "Pedidos", title: "Número de Pedidos", type: "quantitative" }
-        ])
-    )
-    .project(vl.projection("mercator"))
-    .width(850)
-    .height(600)
-    .render()
-    .then(view => document.getElementById("view").appendChild(view))
-    .catch(console.error);
+async function renderMapChart(category, orders, orderItems, products, customers_geo) {
+    try {
+        const geoStates = await d3.json("https://raw.githubusercontent.com/giuliano-macedo/geodata-br-states/master/geojson/br_states.json");
+        const custMap = new Map(customers_geo.map(c => [c.customer_id, c.customer_state]));
+        console.log(custMap)
+        // Extrai orders filtrados (lembrando que filterOrders retorna objeto { orders, ... })
+        const filteredOrders = filterOrders(orders, orderItems, products, category, category);
+
+        // Calcula pedidos por estado
+        const pedidosPorEstado = computeOrdersByState(filteredOrders, custMap);
+
+        document.getElementById("view").innerHTML = "";
+
+        // Monta o gráfico com Vega-Lite API (vl)
+        vl.markGeoshape({ stroke: "#000000", strokeWidth: 0.5 })
+            .data(geoStates.features) // features do GeoJSON
+            .transform(
+                vl.lookup("id")
+                    .from(vl.data(pedidosPorEstado).key("estado").fields(["estado", "pedidos"]))
+                    .as(["estado", "pedidos"]),
+                vl.calculate("datum.pedidos || 0").as("Pedidos")
+            )
+            .encode(
+                vl.color()
+                    .fieldQ("Pedidos")
+                    .scale({
+                        type: "log",
+                        domain: [1, d3.max(pedidosPorEstado, d => d.pedidos) || 10], // valor padrão 10 se vazio
+                        scheme: "blues"
+                    }),
+                vl.tooltip([
+                    { field: "estado", title: "Estado" },
+                    { field: "Pedidos", title: "Número de Pedidos", type: "quantitative" }
+                ])
+            )
+            .project(vl.projection("mercator"))
+            .width(850)
+            .height(600)
+            .render()
+            .then(view => document.getElementById("view").appendChild(view))
+            .catch(console.error);
+
+    } catch (err) {
+        console.error("Erro ao renderizar o mapa:", err);
+    }
+}
+
+async function init() {
+    const { orders, orderItems, products, payments, customers_geo } = await loadData();
+
+    // Agora é seguro usar "products"
+    const categories = [...new Set(products.map(d => d.product_category_name))].filter(Boolean);
+
+    let selectedCategory = "all";
+
+    d3.select("#radio-buttons")
+        .selectAll("label")
+        .data(["all", ...categories])
+        .enter()
+        .append("label")
+        .style("margin-right", "10px")
+        .html(d => `
+            <input type="radio" name="category" value="${d}" ${d === selectedCategory ? "checked" : ""}>
+            ${d}`);
+
+    d3.selectAll("input[name='category']").on("change", function () {
+        selectedCategory = this.value;
+        renderLineChart(selectedCategory, orders, orderItems, products);
+        renderBarChart(selectedCategory, orders, orderItems, products);
+        renderPieChart(selectedCategory, orders, orderItems, products, payments);
+        renderMapChart(selectedCategory, orders, orderItems, products, customers_geo);
+    });
+
+    // Render inicial com "all"
+    renderLineChart(selectedCategory, orders, orderItems, products);
+    renderBarChart(selectedCategory, orders, orderItems, products);
+    renderPieChart(selectedCategory, orders, orderItems, products, payments);
+    renderMapChart(selectedCategory, orders, orderItems, products, customers_geo);
+}
+
+init();
