@@ -140,7 +140,7 @@ vl.layer([
     .height(400)
     .padding({ bottom: 60, left: 40, right: 40, top: 40 })
     .title({ text: "Número de pedidos ao longo do tempo", font: "sans-serif" })
-    .render().then(view => document.getElementById("view").appendChild(view))
+    .render().then(view => document.getElementById("view3").appendChild(view))
     .catch(console.error);
 
 vl.markBar()
@@ -158,7 +158,7 @@ vl.markBar()
     .height(400)
     .padding({ left: 65 })
     .title({ text: "Top 10 Brazilian Cities with More Orders", font: "sans-serif" })
-    .render().then(view => document.getElementById("view").appendChild(view))
+    .render().then(view => document.getElementById("view4").appendChild(view))
     .catch(console.error);
 
 vl.markArc({outerRadius: 120 })
@@ -176,7 +176,7 @@ vl.markArc({outerRadius: 120 })
     .height(400)
     .padding(40)
     .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif" })
-    .render().then(view => document.getElementById("view").appendChild(view))
+    .render().then(view => document.getElementById("view2").appendChild(view))
     .catch(console.error);
 
 console.log("opa")
