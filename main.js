@@ -140,8 +140,8 @@ vl.layer([
     .height(400)
     .padding({ bottom: 60, left: 40, right: 40, top: 40 })
     .title({ text: "Número de pedidos ao longo do tempo", font: "sans-serif" })
-    .render()
-
+    .render().then(view => document.getElementById("view").appendChild(view))
+    .catch(console.error);
 
 vl.markBar()
     .data(ordersByCity)
@@ -179,7 +179,8 @@ vl.markArc({outerRadius: 120 })
     .render().then(view => document.getElementById("view").appendChild(view))
     .catch(console.error);
 
-/*
+console.log("opa")
+
 vl
     .markGeoshape({ stroke: "#000000", strokeWidth: 0.5 })
     .data(estadosGeo.features) // ou só estadosGeo se é um array de features
@@ -208,5 +209,3 @@ vl
     .render()
     .then(view => document.getElementById("view").appendChild(view))
     .catch(console.error);
-
- */
