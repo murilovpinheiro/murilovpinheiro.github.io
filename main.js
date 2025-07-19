@@ -116,35 +116,6 @@ const estadosGeo = await d3.json(
     "https://raw.githubusercontent.com/giuliano-macedo/geodata-br-states/master/geojson/br_states.json"
 );
 
-vl
-    .markGeoshape({ stroke: "#888", strokeWidth: 0.5 })
-    .data(estadosGeo.features) // ou só estadosGeo se é um array de features
-    .transform(
-        vl.lookup("id") // usar 'id' que é a sigla do estado
-            .from(vl.data(pedidosPorEstado).key("estado").fields(["estado", "pedidos"]))
-            .as(["estado", "pedidos"]),
-        vl.calculate("datum.pedidos || 0").as("Pedidos")
-    )
-    .encode(
-        vl.color()
-            .fieldQ("Pedidos")
-            .scale({
-                type: "log",   // Aqui está a escala logarítmica
-                domain: [1, d3.max(pedidosPorEstado, d => d.pedidos)], // domain deve começar em >0, evite zero
-                scheme: "blues"
-            }),
-        vl.tooltip([
-            { field: "estado", title: "Estado" },
-            { field: "Pedidos", title: "Número de Pedidos", type: "quantitative" }
-        ])
-    )
-    .project(vl.projection("mercator"))
-    .width(850)
-    .height(600)
-    .render()
-    .then(view => document.getElementById("view").appendChild(view))
-    .catch(console.error);
-
 vl.layer([
     // Linha principal
     vl.markLine({ interpolate: "linear", stroke: "#1f77b4" })
@@ -205,3 +176,33 @@ vl.markArc({outerRadius: 120 })
     .padding(40)
     .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif" })
     .render()
+
+
+vl
+    .markGeoshape({ stroke: "#000000", strokeWidth: 0.5 })
+    .data(estadosGeo.features) // ou só estadosGeo se é um array de features
+    .transform(
+        vl.lookup("id") // usar 'id' que é a sigla do estado
+            .from(vl.data(pedidosPorEstado).key("estado").fields(["estado", "pedidos"]))
+            .as(["estado", "pedidos"]),
+        vl.calculate("datum.pedidos || 0").as("Pedidos")
+    )
+    .encode(
+        vl.color()
+            .fieldQ("Pedidos")
+            .scale({
+                type: "log",   // Aqui está a escala logarítmica
+                domain: [1, d3.max(pedidosPorEstado, d => d.pedidos)], // domain deve começar em >0, evite zero
+                scheme: "blues"
+            }),
+        vl.tooltip([
+            { field: "estado", title: "Estado" },
+            { field: "Pedidos", title: "Número de Pedidos", type: "quantitative" }
+        ])
+    )
+    .project(vl.projection("mercator"))
+    .width(850)
+    .height(600)
+    .render()
+    .then(view => document.getElementById("view").appendChild(view))
+    .catch(console.error);
