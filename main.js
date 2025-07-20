@@ -50,6 +50,7 @@ async function loadData() {
     console.log("Rapaz deu bom!")
     return { orders: ordersWithCity, orderItems, products, payments, customers_geo};
 }
+
 function filterOrders(orders, orderItems, products, category) {
     if (!category || category === "all") {
         return orders;
@@ -180,28 +181,6 @@ function computeOrdersByState(orders, custMap) {
         .sort((a, b) => a.estado.localeCompare(b.estado));
 }
 
-/*
-const orders         = await d3.csv("./data/olist_orders_dataset.csv")
-const order_items    = await d3.csv("./data/olist_order_items_dataset.csv")
-const sellers        = await d3.csv("./data/olist_sellers_dataset.csv")
-const payments       = await d3.csv("./data/olist_order_payments_dataset.csv")
-//const geolocationRaw = await d3.csv("./data/olist_geolocation_dataset.csv")
-//const customersRaw   = await d3.csv("./data/olist_customers_dataset.csv")
-const products =       await d3.csv("./data/olist_products_dataset.csv");
-
-const customers = customersRaw.map(d => {
-    const {customer_city, ...rest} = d;
-    return {geolocation_city: customer_city, ...rest};
-});
-
-//const geolocation = normalizeColumn(geolocationRaw, "geolocation_city");
-//const customersN = normalizeColumn(customers, "geolocation_city");
-
-const join1 = innerJoin(orders, order_items, "order_id")
-const join2 = innerJoin(join1, payments, "order_id")
-const data = innerJoin(join2, sellers, "seller_id")
-*/
-
 async function initRadioButtons() {
 
     // Get unique categories
@@ -238,21 +217,37 @@ function renderLineChart(category, orders, orderItems, products) {
 
     document.getElementById("line_chart").innerHTML = "";
 
+    const hover = vl.selectPoint('hover')
+        .encodings('x')  // limit selection to x-axis value
+        .on('mouseover') // select on mouseover events
+        .toggle(false)   // disable toggle on shift-hover
+        .nearest(true);  // select data point nearest the cursor
+
+    const isHovered = hover.empty(false);
+
+    const line = vl.markLine({ interpolate: "linear", stroke: "#1f77b4" })
+        .encode( vl.x().fieldT("date"),
+                 vl.y().fieldQ("count").title("Número de pedidos").axis({ grid: true }));
+
+    const base = line.transform(vl.filter(isHovered));
+
     vl.layer([
-        vl.markLine({ interpolate: "linear", stroke: "#1f77b4" })
+        line,
+        vl.markRule({color: '#ffffff'})
+            .transform(vl.filter(isHovered))
+            .encode(vl.x().fieldT('date')),
+        line.markCircle({tooltip: true})
+            .params(hover) // use as anchor points for selection
             .encode(
-                vl.x().fieldT("date"),
-                vl.y().fieldQ("count").title("Número de pedidos").axis({ grid: true })
-            ),
-        vl.markPoint({ opacity: 0, size: 100 })  // aumenta a área de detecção
-            .encode(
-                vl.x().fieldT("date"),
-                vl.y().fieldQ("count"),
+                vl.opacity().if(isHovered, vl.value(1)).value(0),
+                vl.size().if(isHovered, vl.value(48)).value(100),
                 vl.tooltip([
                     { field: "date", type: "temporal", title: "Data" },
                     { field: "count", type: "quantitative", title: "Pedidos" }
                 ])
-            )
+            ),
+
+
     ])
         .data(ordersByDay)
         .width(750)
@@ -267,6 +262,7 @@ function renderLineChart(category, orders, orderItems, products) {
                 gridColor: "#3a506b"
             }
         })
+
         .render().then(view => document.getElementById("line_chart").appendChild(view))
         .catch(console.error);
 }
@@ -277,17 +273,44 @@ function renderBarChart(category, orders, orderItems, products) {
 
     document.getElementById("bar_chart").innerHTML = "";
 
-    vl.markBar()
-        .data(ordersByCity)
+    const sortedCities = ordersByCity
+        .sort((a, b) => b.orders - a.orders)
+        .map(d => d.city);
+
+    const click = vl
+        .selectPoint("clickedBar")
+        .on("click")
+        .clear("dblclick")
+        .fields("city");
+
+    const bar = vl.markBar()
         .encode(
-            vl.x().fieldQ("orders").title("Número de Pedidos").axis({ grid: true }),
-            vl.y().fieldN("city").title(null).sort({ field: "orders", order: "descending" }).axis({ labelAngle: 0 }),
-            vl.color().value("#8ecae6"), // azul claro
-            vl.tooltip([
-                { field: "city", type: "nominal", title: "Cidade" },
-                { field: "orders", type: "quantitative", title: "Pedidos", format: ".0f" }
-            ])
-        )
+        vl.x().fieldQ("orders").title("Número de Pedidos").axis({ grid: true }),
+        vl.y().fieldN("city").title(null).sort(sortedCities),
+        vl.color().value("#1bbfe9"), // azul claro
+        vl.opacity().if(click, vl.value(1.0)).value(0.3),  //change opacity as well
+        vl.strokeWidth().if(click, vl.value(2)).value(0),
+        vl.tooltip([
+            { field: "city", type: "nominal", title: "Cidade" },
+            { field: "orders", type: "quantitative", title: "Pedidos", format: ".0f" }
+        ])
+        ).params(click)
+    vl.layer([bar,
+        vl.markText({
+            dx: -16,           // move mais à esquerda
+            fontSize: 10,      // aumenta o tamanho
+            fontWeight: "bold",// deixa mais grosso
+            fill: "#10072c"    // cor branca (ou troque por outra mais escura se quiser)
+            })
+            .encode(
+                vl.opacity().if(click.empty(false), vl.value(1)).value(0),
+                vl.x().fieldQ("orders"),
+                vl.y().fieldN("city").sort(sortedCities),
+                vl.text().fieldQ("orders")
+            )
+            .transform(vl.filter(click))
+        ])
+        .data(ordersByCity)
         .width(360)
         .height(360)
         .padding({ left: 65 })
@@ -311,8 +334,19 @@ function renderPieChart(category, orders, orderItems, products, payments) {
 
     document.getElementById("pie_chart").innerHTML = "";
 
-    vl.markArc({ outerRadius: 120 })
-        .data(paymentsByType)
+    const totalSum = paymentsByType.reduce((sum, d) => sum + d.total_value, 0);
+    const processedData = paymentsByType.map(d => {
+        const percent = (d.total_value / totalSum) * 100;
+        return {
+            ...d,
+            percent,
+            percent_str: percent.toFixed(1) + "%"  // nova string com "%"
+        };
+    });
+
+    const click = vl.selectPoint().on("click").clear("dblclick").fields(["payment_type"]).bind("legend");
+
+    const pie = vl.markArc({ outerRadius: 120, innerRadius: 80 })
         .encode(
             vl.theta().fieldQ("total_value").aggregate("sum"),
             vl.color()
@@ -322,11 +356,29 @@ function renderPieChart(category, orders, orderItems, products, payments) {
                     range: ["#1bbfe9", "#7461a5", "#3b5dac", "#7bc895"]})
                 .legend({ title: "Tipo de Pagamento", labelColor: "#e0e1dd", titleColor: "#e0e1dd", offset:0}),
             vl.order().fieldQ("total_value").sort("descending"),
+            vl.opacity().if(click, vl.value(1.0)).value(0.3),  //change opacity as well
+            vl.size().if(click, vl.value(300)).value(50),
             vl.tooltip([
                 { field: "payment_type", type: "nominal", title: "Tipo de Pagamento" },
                 { field: "total_value", type: "quantitative", title: "Valor Total", format: ".2f" }
             ])
-        )
+        ).params(click)
+
+    vl.layer([
+        pie,
+        vl.markText({
+            align: "center",
+            fontSize: 24,      // aumenta tamanho
+            fontWeight: "bold",
+            fill: "#a6a6a6"
+        })
+            .encode(
+                vl.text().fieldN("percent_str"), // campo formatado como string com '%'
+                vl.theta().fieldQ("total_value"),
+                vl.opacity().if(click.empty(false), vl.value(1)).value(0)
+            )
+            .transform(vl.filter(click))])
+        .data(processedData)
         .width(260)
         .height(260)
         .padding(10)
