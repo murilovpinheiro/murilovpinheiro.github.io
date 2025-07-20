@@ -11,6 +11,8 @@ const vl = vegaLiteApi.register(vega, vegaLite, {
     }
 });
 
+let currentFilter = null;
+
 function normalizeColumn(data, columnName) {
     return data.map(row => ({
         ...row,
@@ -59,7 +61,17 @@ async function loadData() {
 
     return fullData;
 }
-
+function selectColumns(data, columns) {
+    return data.map(item => {
+        const filtered = {};
+        for (const col of columns) {
+            if (col in item) {
+                filtered[col] = item[col];
+            }
+        }
+        return filtered;
+    });
+}
 function filterDataByCategory(category, data) {
     if (!category || category === "all") {
         return data;
@@ -129,9 +141,24 @@ function computeOrdersByState(orders, custMap) {
         .sort((a, b) => a.estado.localeCompare(b.estado));
 }
 
+function parseOrderDates(data) {
+    // Define o parser com o formato do timestamp da Olist
+    const parseDate = d3.timeParse("%Y-%m-%d %H:%M:%S");
+
+    return data.map(d => ({
+        ...d,
+        date: parseDate(d.order_purchase_timestamp.split('.')[0])  // remove milissegundos se houver
+    }));
+}
+
 function renderLineChart(category, data) {
-    const dataByCategory = filterDataByCategory(category, data);
-    const ordersByDay = computeOrdersByDay(dataByCategory);
+    let filteredData = filterDataByCategory(category, data);
+    console.log("recarregando...")
+    if (currentFilter !== null) {
+        filteredData = data.filter(d => d.payment_type === currentFilter);
+    }
+
+    const ordersByDay = computeOrdersByDay(filteredData);
 
     document.getElementById("line_chart").innerHTML = "";
 
@@ -145,7 +172,7 @@ function renderLineChart(category, data) {
 
     const line = vl.markLine({ interpolate: "linear", stroke: "#1f77b4" })
         .encode( vl.x().fieldT("date"),
-                 vl.y().fieldQ("count").title("Número de pedidos").axis({ grid: true }));
+            vl.y().fieldQ("count").title("Número de pedidos").axis({ grid: true }));
 
     const base = line.transform(vl.filter(isHovered));
 
@@ -164,8 +191,6 @@ function renderLineChart(category, data) {
                     { field: "count", type: "quantitative", title: "Pedidos" }
                 ])
             ),
-
-
     ])
         .data(ordersByDay)
         .width(750)
@@ -262,7 +287,12 @@ function renderPieChart(category, data) {
         };
     });
 
-    const click = vl.selectPoint().on("click").clear("dblclick").fields(["payment_type"]).bind("legend");
+    // const click = vl.selectPoint().on("click").clear("dblclick").fields(["payment_type"]).bind("legend");
+    const click = vl.selectPoint()
+        .on("click")
+        .clear("dblclick")
+        .fields(["payment_type"])
+        .bind("legend")
 
     const pie = vl.markArc({ outerRadius: 120, innerRadius: 80 })
         .encode(
@@ -281,8 +311,7 @@ function renderPieChart(category, data) {
                 { field: "total_value", type: "quantitative", title: "Valor Total", format: ".2f" }
             ])
         ).params(click)
-
-    vl.layer([
+    let layerSpec = vl.layer([
         pie,
         vl.markText({
             align: "center",
@@ -307,10 +336,25 @@ function renderPieChart(category, data) {
                 labelColor: "#e0e1dd",
                 titleColor: "#e0e1dd"
             }
-        })
+        }).toSpec()
+
+    const vegaSpec = vegaLite.compile(layerSpec).spec;
+
+    const view = new vega.View(vega.parse(vegaSpec))
+        .renderer("canvas").initialize("#pie_chart").run();
+
+    view.addEventListener("click", (event, item) => {
+        if (item && item.datum) {
+            console.log("Você clicou no dado:", item.datum);
+        } else {
+            console.log("Você clicou no gráfico, mas sem dado associado.");
+        }
+    });
+        /*
         .render()
-        .then(view => document.getElementById("pie_chart").appendChild(view))
-        .catch(console.error);
+        .then(view => {
+            document.getElementById("pie_chart").appendChild(view);
+        });*/
 }
 
 async function renderMapChart(category, data) {
@@ -369,8 +413,11 @@ async function renderMapChart(category, data) {
 }
 
 async function init() {
-    const data = await loadData()
+    const dataRaw = await loadData()
 
+    const data = await selectColumns(dataRaw, ["customer_id", "geolocation_city",
+        "order_id", "product_category_name", "price", "product_id", "customer_state",
+        "order_purchase_timestamp", "date", "payment_type", "payment_value"])
     // Agora é seguro usar "products"
     const categories = [...new Set(data.map(d => d.product_category_name))].filter(Boolean);
 
@@ -388,17 +435,17 @@ async function init() {
 
     d3.selectAll("input[name='category']").on("change", function () {
         selectedCategory = this.value;
+        renderPieChart(selectedCategory, data);
         renderLineChart(selectedCategory, data);
         renderBarChart(selectedCategory, data);
-        renderPieChart(selectedCategory, data);
         renderMapChart(selectedCategory, data);
     });
 
     // Render inicial com "all"
     console.log(data)
+    renderPieChart(selectedCategory, data);
     renderLineChart(selectedCategory, data);
     renderBarChart(selectedCategory, data);
-    renderPieChart(selectedCategory, data);
     renderMapChart(selectedCategory, data);
 }
 
