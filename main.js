@@ -31,9 +31,7 @@ function innerJoin(left, right, key) {
 }
 
 async function loadData() {
-    const [orders,
-        orderItems, products,
-        payments, customers] = await Promise.all([
+    const [orders, orderItems, products, payments, customers] = await Promise.all([
         d3.csv("./data/olist_orders_dataset.csv"),
         d3.csv("./data/olist_order_items_dataset.csv"),
         d3.csv("./data/olist_products_dataset.csv"),
@@ -41,83 +39,33 @@ async function loadData() {
         d3.csv("./data/olist_customers_dataset.csv")
     ]);
 
+    // customers -> rename customer_city to geolocation_city
     const customers_geo = customers.map(d => {
-        const {customer_city, ...rest} = d;
-        return {geolocation_city: customer_city, ...rest};
+        const { customer_city, ...rest } = d;
+        return { ...rest, geolocation_city: customer_city };
     });
 
-    const ordersWithCity = innerJoin(orders, customers, "customer_id");
-    console.log("Rapaz deu bom!")
-    return { orders: ordersWithCity, orderItems, products, payments, customers_geo};
+    // JOIN: orders + customers
+    const ordersWithCustomer = innerJoin(orders, customers_geo, "customer_id");
+
+    // JOIN: ordersWithCustomer + payments
+    const ordersWithPayments = innerJoin(ordersWithCustomer, payments, "order_id");
+
+    // JOIN: ordersWithPayments + orderItems
+    const ordersWithItems = innerJoin(ordersWithPayments, orderItems, "order_id");
+
+    // JOIN: ordersWithItems + products
+    const fullData = innerJoin(ordersWithItems, products, "product_id");
+
+    return fullData;
 }
 
-function filterOrders(orders, orderItems, products, category) {
+function filterDataByCategory(category, data) {
     if (!category || category === "all") {
-        return orders;
+        return data;
     }
 
-    // Índice: order_id → lista de orderItems
-    const orderItemsByOrderId = new Map();
-    for (const item of orderItems) {
-        if (!orderItemsByOrderId.has(item.order_id)) {
-            orderItemsByOrderId.set(item.order_id, []);
-        }
-        orderItemsByOrderId.get(item.order_id).push(item);
-    }
-
-    // Índice: product_id → produto
-    const productById = new Map();
-    for (const p of products) {
-        productById.set(p.product_id, p);
-    }
-
-    // Agora o filtro é rápido
-    return orders.filter(order => {
-        const items = orderItemsByOrderId.get(order.order_id) || [];
-        return items.some(item => {
-            const product = productById.get(item.product_id);
-            return product?.product_category_name === category;
-        });
-    });
-}
-
-function filterPaymentsByCategory(orders, orderItems, products, payments, category) {
-    // Índice: order_id → lista de orderItems
-    console.log("produtos")
-    console.log(products);
-    if (!category || category === "all") {
-        return payments;
-    }
-    const orderItemsByOrderId = new Map();
-    for (const item of orderItems) {
-        if (!orderItemsByOrderId.has(item.order_id)) {
-            orderItemsByOrderId.set(item.order_id, []);
-        }
-        orderItemsByOrderId.get(item.order_id).push(item);
-    }
-    console.log(orderItemsByOrderId);
-
-    // Índice: product_id → produto
-    const productById = new Map();
-    for (const p of products) {
-        productById.set(p.product_id, p);
-    }
-
-    // Filtra order_ids que tenham produto da categoria desejada
-    const orderIdsWithCategory = new Set();
-    for (const order of orders) {
-        const items = orderItemsByOrderId.get(order.order_id) || [];
-        if (items.some(item => {
-            const product = productById.get(item.product_id);
-            return product?.product_category_name === category;
-        })) {
-            orderIdsWithCategory.add(order.order_id);
-        }
-    }
-    console.log(orderItems[0].product_id, products[0].product_id);
-
-    // Retorna pagamentos cujo order_id está no conjunto filtrado
-    return payments.filter(payment => orderIdsWithCategory.has(payment.order_id));
+    return data.filter(row => row.product_category_name === category);
 }
 
 function computeOrdersByDay(orders) {
@@ -138,7 +86,7 @@ function computeOrdersByDay(orders) {
 function computeOrdersByCity(orders) {
     const cityCounts = new Map();
     for (const order of orders) {
-        const city = order.customer_city;
+        const city = order.geolocation_city;
         if (city) {
             cityCounts.set(city, (cityCounts.get(city) || 0) + 1);
         }
@@ -181,39 +129,9 @@ function computeOrdersByState(orders, custMap) {
         .sort((a, b) => a.estado.localeCompare(b.estado));
 }
 
-async function initRadioButtons() {
-
-    // Get unique categories
-    const categories = [...new Set(products.map(d => d.product_category_name))].filter(Boolean);
-    let selectedCategory = categories[0] || null;
-
-    // Create radio buttons
-    d3.select("#radio-buttons")
-        .selectAll("label")
-        .data(categories)
-        .enter()
-        .append("label")
-        .style("margin-right", "10px")
-        .html(d => `
-            <input type="radio" name="category" value="${d}" ${d === selectedCategory ? "checked" : ""}>
-            ${d}
-        `);
-
-    // Return selected category for potential use
-    return selectedCategory;
-}
-
-//const custMap = new Map(customers.map(c => [c.customer_id, c.customer_state]));
-
-const estadosGeo = await d3.json(
-    "https://raw.githubusercontent.com/giuliano-macedo/geodata-br-states/master/geojson/br_states.json"
-);
-
-function renderLineChart(category, orders, orderItems, products) {
-    const filteredOrders = filterOrders(orders, orderItems, products, category);
-    console.log("filteredOrders");
-    const ordersByDay = computeOrdersByDay(filteredOrders);
-    console.log("ordersByDay");
+function renderLineChart(category, data) {
+    const dataByCategory = filterDataByCategory(category, data);
+    const ordersByDay = computeOrdersByDay(dataByCategory);
 
     document.getElementById("line_chart").innerHTML = "";
 
@@ -267,8 +185,8 @@ function renderLineChart(category, orders, orderItems, products) {
         .catch(console.error);
 }
 
-function renderBarChart(category, orders, orderItems, products) {
-    const filteredOrders = filterOrders(orders, orderItems, products, category);
+function renderBarChart(category, data) {
+    const filteredOrders = filterDataByCategory(category, data);
     const ordersByCity = computeOrdersByCity(filteredOrders);
 
     document.getElementById("bar_chart").innerHTML = "";
@@ -328,8 +246,8 @@ function renderBarChart(category, orders, orderItems, products) {
         .catch(console.error);
 }
 
-function renderPieChart(category, orders, orderItems, products, payments) {
-    const filteredPayments = filterPaymentsByCategory(orders, orderItems, products, payments, category);
+function renderPieChart(category, data) {
+    const filteredPayments = filterDataByCategory(category, data);
     const paymentsByType = computePaymentsByType(filteredPayments);
 
     document.getElementById("pie_chart").innerHTML = "";
@@ -395,12 +313,13 @@ function renderPieChart(category, orders, orderItems, products, payments) {
         .catch(console.error);
 }
 
-async function renderMapChart(category, orders, orderItems, products, customers_geo) {
+async function renderMapChart(category, data) {
     try {
         const geoStates = await d3.json("https://raw.githubusercontent.com/giuliano-macedo/geodata-br-states/master/geojson/br_states.json");
-        const custMap = new Map(customers_geo.map(c => [c.customer_id, c.customer_state]));
-        const filteredOrders = filterOrders(orders, orderItems, products, category, category);
-        const pedidosPorEstado = computeOrdersByState(filteredOrders, custMap);
+        const custMap = new Map(data.map(c => [c.customer_id, c.customer_state]));
+
+        const filteredOrders = filterDataByCategory(category, data);
+        const ordersByState = computeOrdersByState(filteredOrders, custMap);
 
         document.getElementById("map_chart").innerHTML = "";
 
@@ -408,7 +327,7 @@ async function renderMapChart(category, orders, orderItems, products, customers_
             .data(geoStates.features)
             .transform(
                 vl.lookup("id")
-                    .from(vl.data(pedidosPorEstado).key("estado").fields(["estado", "pedidos"]))
+                    .from(vl.data(ordersByState).key("estado").fields(["estado", "pedidos"]))
                     .as(["estado", "pedidos"]),
                 vl.calculate("datum.pedidos || 0").as("Pedidos")
             )
@@ -417,7 +336,7 @@ async function renderMapChart(category, orders, orderItems, products, customers_
                     .fieldQ("Pedidos")
                     .scale({
                         type: "log",
-                        domain: [1, d3.max(pedidosPorEstado, d => d.pedidos) || 10],
+                        domain: [1, d3.max(ordersByState, d => d.pedidos) || 10],
                         scheme: "blues" // funciona bem em fundo escuro
                     })
                     .legend({
@@ -450,10 +369,10 @@ async function renderMapChart(category, orders, orderItems, products, customers_
 }
 
 async function init() {
-    const { orders, orderItems, products, payments, customers_geo } = await loadData();
+    const data = await loadData()
 
     // Agora é seguro usar "products"
-    const categories = [...new Set(products.map(d => d.product_category_name))].filter(Boolean);
+    const categories = [...new Set(data.map(d => d.product_category_name))].filter(Boolean);
 
     let selectedCategory = "all";
 
@@ -469,17 +388,18 @@ async function init() {
 
     d3.selectAll("input[name='category']").on("change", function () {
         selectedCategory = this.value;
-        renderLineChart(selectedCategory, orders, orderItems, products);
-        renderBarChart(selectedCategory, orders, orderItems, products);
-        renderPieChart(selectedCategory, orders, orderItems, products, payments);
-        renderMapChart(selectedCategory, orders, orderItems, products, customers_geo);
+        renderLineChart(selectedCategory, data);
+        renderBarChart(selectedCategory, data);
+        renderPieChart(selectedCategory, data);
+        renderMapChart(selectedCategory, data);
     });
 
     // Render inicial com "all"
-    renderLineChart(selectedCategory, orders, orderItems, products);
-    renderBarChart(selectedCategory, orders, orderItems, products);
-    renderPieChart(selectedCategory, orders, orderItems, products, payments);
-    renderMapChart(selectedCategory, orders, orderItems, products, customers_geo);
+    console.log(data)
+    renderLineChart(selectedCategory, data);
+    renderBarChart(selectedCategory, data);
+    renderPieChart(selectedCategory, data);
+    renderMapChart(selectedCategory, data);
 }
 
 init();
