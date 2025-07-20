@@ -13,18 +13,6 @@ const vl = vegaLiteApi.register(vega, vegaLite, {
 
 let currentFilter = null;
 
-function normalizeColumn(data, columnName) {
-    return data.map(row => ({
-        ...row,
-        [columnName]: row[columnName]
-            .toLowerCase()
-            .normalize("NFD")               // separa letras e acentos
-            .replace(/[\u0300-\u036f]/g, "") // remove os acentos
-            .replace(/ç/g, "c")              // trata ç separadamente (opcional)
-            .replace(/[^a-z0-9\s]/g, "")     // remove outros caracteres especiais, se quiser
-    }));
-}
-
 function innerJoin(left, right, key) {
     const map = new Map(right.map(d => [d[key], d]));
     return left
@@ -72,12 +60,24 @@ function selectColumns(data, columns) {
         return filtered;
     });
 }
-function filterDataByCategory(category, data) {
-    if (!category || category === "all") {
+function filterDataByCategory(filters, data) {
+    if (!filters || Object.keys(filters).length === 0) {
         return data;
     }
 
-    return data.filter(row => row.product_category_name === category);
+    return data.filter(row => {
+        for (const [key, value] of Object.entries(filters)) {
+            // Ignora filtro da categoria se for "all"
+            if (key === "product_category_name" && value === "all") {
+                continue;
+            }
+
+            if (row[key] !== value) {
+                return false; // descarta se não bater
+            }
+        }
+        return true; // passou por todos os filtros ativos
+    });
 }
 
 function computeOrdersByDay(orders) {
@@ -223,7 +223,6 @@ function renderBarChart(category, data) {
     const click = vl
         .selectPoint("clickedBar")
         .on("click")
-        .clear("dblclick")
         .fields("city");
 
     const bar = vl.markBar()
@@ -238,7 +237,7 @@ function renderBarChart(category, data) {
             { field: "orders", type: "quantitative", title: "Pedidos", format: ".0f" }
         ])
         ).params(click)
-    vl.layer([bar,
+    let layerSpec = vl.layer([bar,
         vl.markText({
             dx: -16,           // move mais à esquerda
             fontSize: 10,      // aumenta o tamanho
@@ -265,10 +264,33 @@ function renderBarChart(category, data) {
                 titleColor: "#e0e1dd",
                 gridColor: "#3a506b"
             }
-        })
-        .render()
-        .then(view => document.getElementById("bar_chart").appendChild(view))
-        .catch(console.error);
+        }).toSpec()
+
+    const vegaSpec = vegaLite.compile(layerSpec).spec;
+
+    const view = new vega.View(vega.parse(vegaSpec))
+        .renderer("canvas").initialize("#bar_chart").run();
+
+    view.addEventListener("click", (event, item) => {
+        const firstEntry = Object.entries(category)[0]
+        const [firstKey, firstValue] = firstEntry || [];
+        const filter = {};
+        if (firstKey && firstValue !== undefined) {
+            filter[firstKey] = firstValue;
+        }
+        if (item && item.datum) {
+            console.log(item.datum);
+            filter.geolocation_city = item.datum.city;
+            console.log("Você clicou no dado:", item.datum.city);
+            //let filter = {...category, "geolocation_city": item.datum.geolocation_city};
+            renderAllCharts(filter, data, "bar_chart");
+            console.log(filter);
+        } else {
+            renderAllCharts(filter, data, );
+            console.log("Você clicou no gráfico, mas sem dado associado.");
+        }
+    });
+
 }
 
 function renderPieChart(category, data) {
@@ -304,13 +326,13 @@ function renderPieChart(category, data) {
                     range: ["#1bbfe9", "#7461a5", "#3b5dac", "#7bc895"]})
                 .legend({ title: "Tipo de Pagamento", labelColor: "#e0e1dd", titleColor: "#e0e1dd", offset:0}),
             vl.order().fieldQ("total_value").sort("descending"),
-            vl.opacity().if(click, vl.value(1.0)).value(0.3),  //change opacity as well
-            vl.size().if(click, vl.value(300)).value(50),
+            vl.opacity().if(click, vl.value(1.0)).value(0.3),
             vl.tooltip([
                 { field: "payment_type", type: "nominal", title: "Tipo de Pagamento" },
                 { field: "total_value", type: "quantitative", title: "Valor Total", format: ".2f" }
             ])
         ).params(click)
+
     let layerSpec = vl.layer([
         pie,
         vl.markText({
@@ -344,9 +366,19 @@ function renderPieChart(category, data) {
         .renderer("canvas").initialize("#pie_chart").run();
 
     view.addEventListener("click", (event, item) => {
+        const firstEntry = Object.entries(category)[0]
+        const [firstKey, firstValue] = firstEntry || [];
+        const filter = {};
+        if (firstKey && firstValue !== undefined) {
+            filter[firstKey] = firstValue;
+        }
         if (item && item.datum) {
-            console.log("Você clicou no dado:", item.datum);
+            filter.payment_type = item.datum.payment_type;
+            console.log("Você clicou no dado:", item.datum.payment_type);
+            renderAllCharts(filter, data, "pie_chart");
+            console.log(filter);
         } else {
+            renderAllCharts(filter, data, );
             console.log("Você clicou no gráfico, mas sem dado associado.");
         }
     });
@@ -367,8 +399,11 @@ async function renderMapChart(category, data) {
 
         document.getElementById("map_chart").innerHTML = "";
 
-        vl.markGeoshape({ stroke: "#000000", strokeWidth: 0.5 })
-            .data(geoStates.features)
+        const click = vl.selectPoint()
+            .on("click")
+            .clear("dblclick")
+            .fields(["estado"])
+        const map = vl.markGeoshape({ stroke: "#000000", strokeWidth: 0.5 })
             .transform(
                 vl.lookup("id")
                     .from(vl.data(ordersByState).key("estado").fields(["estado", "pedidos"]))
@@ -388,11 +423,15 @@ async function renderMapChart(category, data) {
                     titleColor: "#e0e1dd",
                     labelColor: "#e0e1dd"
                 }),
+                vl.opacity().if(click, vl.value(1.0)).value(0.3),
                 vl.tooltip([
                     { field: "estado", title: "Estado" },
                     { field: "Pedidos", title: "Número de Pedidos", type: "quantitative" }
                 ])
-            )
+            ).params(click)
+
+        const layerSpec = vl.layer([map])
+            .data(geoStates.features)
             .project(vl.projection("mercator"))
             .width(600)
             .height(600)
@@ -403,12 +442,69 @@ async function renderMapChart(category, data) {
                     titleColor: "#e0e1dd",
                     gridColor: "#3a506b"
                 }
-            })
-            .render()
-            .then(view => document.getElementById("map_chart").appendChild(view))
-            .catch(console.error);
+            }).toSpec()
+
+        const vegaSpec = vegaLite.compile(layerSpec).spec;
+
+        const view = new vega.View(vega.parse(vegaSpec))
+            .renderer("canvas").initialize("#map_chart").run();
+
+        view.addEventListener("click", (event, item) => {
+            const firstEntry = Object.entries(category)[0]
+            const [firstKey, firstValue] = firstEntry || [];
+            const filter = {};
+            if (firstKey && firstValue !== undefined) {
+                filter[firstKey] = firstValue;
+            }
+            if (item && item.datum) {
+                filter.customer_state = item.datum.estado;
+                console.log("Você clicou no dado:", item.datum.payment_type);
+                renderAllCharts(filter, data, "map_chart");
+                console.log(filter);
+                console.log(item.datum)
+
+            } else {
+                renderAllCharts(filter, data, );
+                console.log("Você clicou no gráfico, mas sem dado associado.");
+            }
+        });
     } catch (err) {
         console.error("Erro ao renderizar o mapa:", err);
+    }
+}
+
+function renderAllCharts(filter, data, chartClicked = null){
+    if (chartClicked == null) {
+        renderPieChart(filter, data);
+        renderLineChart(filter, data);
+        renderBarChart(filter, data);
+        renderMapChart(filter, data);
+    }
+
+    else if(chartClicked == "pie_chart"){
+        renderLineChart(filter, data);
+        renderBarChart(filter, data);
+        renderMapChart(filter, data)
+    }
+
+    else if(chartClicked == "line_chart"){
+        renderPieChart(filter, data);
+        renderBarChart(filter, data);
+        renderMapChart(filter, data);
+    }
+    else if (chartClicked == "bar_chart"){
+        renderPieChart(filter, data);
+        renderLineChart(filter, data);
+        renderMapChart(filter, data);
+    }
+    else if (chartClicked == "map_chart"){
+        renderPieChart(filter, data);
+        renderLineChart(filter, data);
+        renderBarChart(filter, data);
+    }
+    else{
+        console.log(chartClicked)
+        console.log("Eita Deu Pau!")
     }
 }
 
@@ -421,7 +517,7 @@ async function init() {
     // Agora é seguro usar "products"
     const categories = [...new Set(data.map(d => d.product_category_name))].filter(Boolean);
 
-    let selectedCategory = "all";
+    let filter = {"product_category_name": "all"};
 
     d3.select("#radio-buttons")
         .selectAll("label")
@@ -430,25 +526,21 @@ async function init() {
         .append("label")
         .style("margin-right", "10px")
         .html(d => `
-            <input type="radio" name="category" value="${d}" ${d === selectedCategory ? "checked" : ""}>
+            <input type="radio" name="category" value="${d}" ${d === filter ? "checked" : ""}>
             ${d}`);
 
+    // ajeitar isso depois
     d3.selectAll("input[name='category']").on("change", function () {
-        selectedCategory = this.value;
-        renderPieChart(selectedCategory, data);
-        renderLineChart(selectedCategory, data);
-        renderBarChart(selectedCategory, data);
-        renderMapChart(selectedCategory, data);
+        filter = this.value;
+        renderAllCharts(filter)
     });
 
     // Render inicial com "all"
     console.log(data)
-    renderPieChart(selectedCategory, data);
-    renderLineChart(selectedCategory, data);
-    renderBarChart(selectedCategory, data);
-    renderMapChart(selectedCategory, data);
+    renderAllCharts(filter, data);
 }
 
 init();
 
+//ajeitar a desselação
 // lembrar de diferenciar o mapa é a de origem e o bar é a de chegada, ou vice e versa
