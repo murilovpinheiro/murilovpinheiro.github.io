@@ -41,4 +41,6 @@ async function init() {
     renderAllCharts(filter, data);
 }
 
+//Ajeitar Títulos dos gráficos e um pouco do posicionamento
+
 init();

@@ -32,7 +32,7 @@ function renderLineChart(filter, data) {
 
     const line = vl.markLine({ interpolate: "linear", stroke: "#1f77b4" })
         .params(brush)
-        .encode(vl.x().fieldT("date"),
+        .encode(vl.x().fieldT("date").title("Data"),
             vl.y().fieldQ("count").title("Número de pedidos").axis({ grid: true }),
             vl.opacity().if(brush, vl.value(1)).value(.8)
         )
@@ -158,7 +158,7 @@ function renderBarChart(filter, data) {
         .width(360)
         .height(360)
         .padding({ left: 65 })
-        .title({ text: "Top 10 Cidades Brasileiras com Mais Pedidos", font: "sans-serif", color: "#e0e1dd" })
+        .title({ text: "Cidades com Mais Pedidos", font: "sans-serif", color: "#e0e1dd" })
         .config({
             background: "#0b051d",
             axis: {
@@ -207,8 +207,8 @@ function renderPieChart(filter, data) {
         };
     });
 
-    // const click = vl.selectPoint().on("click").clear("dblclick").fields(["payment_type"]).bind("legend");
-    const click = vl.selectPoint()
+    // const click = vl.selectPoint().on("click").clear("dblclick").fields(["payment_type"]).bind("legend");]
+    let click = vl.selectPoint()
         .on("click")
         .clear("dblclick")
         .fields(["payment_type"])
@@ -249,7 +249,7 @@ function renderPieChart(filter, data) {
         .width(260)
         .height(260)
         .padding(10)
-        .title({ text: "Distribuição do valor por Payment Type", font: "sans-serif", color: "#e0e1dd" })
+        .title({ text: "Distribuição do valor por Tipo de Pagamento", font: "sans-serif", color: "#e0e1dd" })
         .config({
             background: "#0b051d",
             axis: {
@@ -331,6 +331,7 @@ async function renderMapChart(filter, data) {
             .project(vl.projection("mercator"))
             .width(600)
             .height(600)
+            .title({ text: "Mapa do Log do Número de Pedidos", font: "sans-serif", color: "#e0e1dd" })
             .config({
                 background: "#0b051d",
                 axis: {
@@ -403,4 +404,4 @@ function renderAllCharts(filter, data, chartClicked = null){
     }
 }
 
-export {renderMapChart, renderBarChart, renderLineChart, renderPieChart, renderAllCharts}
+export {renderAllCharts}
