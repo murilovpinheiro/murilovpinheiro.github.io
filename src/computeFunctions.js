@@ -12,6 +12,28 @@ function computeOrdersByDay(orders) {
         .sort((a, b) => new Date(a.date) - new Date(b.date));
 }
 
+// esse pega pelos dois
+function computeOrdersByStates(orders) {
+    const pairCounts = new Map();
+
+    for (const order of orders) {
+        const origin = order.seller_state;
+        const destination = order.customer_state;
+
+        if (origin && destination) {
+            const key = `${origin}|${destination}`; // separador seguro para chave
+            pairCounts.set(key, (pairCounts.get(key) || 0) + 1);
+        }
+    }
+
+    return Array.from(pairCounts.entries())
+        .map(([key, count]) => {
+            const [seller_state, customer_state] = key.split('|');
+            return { seller_state, customer_state, orders: count };
+        })
+        .sort((a, b) => b.orders - a.orders);
+}
+
 // esse pega pelo destino
 function computeOrdersByCity(orders) {
     const cityCounts = new Map();
@@ -94,4 +116,5 @@ function filterDataByCategory(filters, data) {
     });
 }
 
-export {computePaymentsByType, computeOrdersByState, computeOrdersByCity, computeOrdersByDay, filterDataByCategory}
+export {computePaymentsByType, computeOrdersByState, computeOrdersByCity,
+        computeOrdersByDay, computeOrdersByStates, filterDataByCategory}

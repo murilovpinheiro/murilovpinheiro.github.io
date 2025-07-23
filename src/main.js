@@ -15,13 +15,13 @@ async function init() {
 
     const data = await selectColumns(dataRaw2, ["customer_id", "geolocation_city",
         "order_id", "product_category_name", "price", "product_id", "customer_state",
-        "order_purchase_timestamp", "date", "payment_type", "payment_value"])
+        "order_purchase_timestamp", "date", "payment_type", "payment_value", "seller_state"])
     // Agora é seguro usar "products"
 
     const categories = [...new Set(data.map(d => d.product_category_name))].filter(Boolean);
 
     let filter = {"product_category_name": "all", "date_range_start": "", "date_range_end": "",
-                       "geolocation_city": "", "customer_state": "", "payment_type": ""};
+                       "geolocation_city": "", "customer_state": "", "payment_type": "", "seller_state": ""};
 
     d3.select("#radio-buttons")
         .selectAll("label")

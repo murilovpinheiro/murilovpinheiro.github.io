@@ -50,12 +50,15 @@ function innerJoin(left, right, key) {
 }
 
 async function loadData() {
-    const [orders, orderItems, products, payments, customers] = await Promise.all([
+    const [orders, orderItems, products,
+           payments, customers, sellers]
+           = await Promise.all([
         d3.csv("./data/olist_orders_dataset.csv"),
         d3.csv("./data/olist_order_items_dataset.csv"),
         d3.csv("./data/olist_products_dataset.csv"),
         d3.csv("./data/olist_order_payments_dataset.csv"),
-        d3.csv("./data/olist_customers_dataset.csv")
+        d3.csv("./data/olist_customers_dataset.csv"),
+        d3.csv("./data/olist_sellers_dataset.csv"),
     ]);
 
     // customers -> rename customer_city to geolocation_city
@@ -73,8 +76,10 @@ async function loadData() {
     // JOIN: ordersWithPayments + orderItems
     const ordersWithItems = innerJoin(ordersWithPayments, orderItems, "order_id");
 
+    const orderWithSellers = innerJoin(ordersWithItems, sellers, "seller_id");
+
     // JOIN: ordersWithItems + products
-    const fullData = innerJoin(ordersWithItems, products, "product_id");
+    const fullData = innerJoin(orderWithSellers, products, "product_id");
 
     return fullData;
 }

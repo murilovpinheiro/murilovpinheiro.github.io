@@ -6,7 +6,7 @@ import * as d3 from "https://esm.sh/d3";
 
 import { computeOrdersByDay, computeOrdersByCity,
          computePaymentsByType, computeOrdersByState,
-         filterDataByCategory} from './computeFunctions.js';
+         computeOrdersByStates, filterDataByCategory} from './computeFunctions.js';
 
 
 const vl = vegaLiteApi.register(vega, vegaLite, {
@@ -15,6 +15,107 @@ const vl = vegaLiteApi.register(vega, vegaLite, {
         if (view.container()) view.container().style["overflow-x"] = "auto";
     }
 });
+
+/*
+vl.markRect()
+    .data(weather)
+    .encode(
+        vl.x().fieldO('date').timeUnit('date').title('Day').axis({labelAngle: 0, format: '%e'}),
+        vl.y().fieldO('date').timeUnit('month').title('Month'),
+        vl.color().fieldQ('temp_max').aggregate('max').legend({title: null})
+    )
+    .config({view: {strokeWidth: 0, step: 13}, axis: {domain: false}})
+    .title("Daily Max Temperatures (C) in Seattle, WA")
+    .render()*/
+
+function renderHeatChart(filter, data) {
+    let filteredData = filterDataByCategory(filter, data);
+    const ordersByStates = computeOrdersByStates(filteredData);
+    document.getElementById("heat_chart").innerHTML = "";
+
+    console.log(ordersByStates);
+
+    const click = vl
+        .selectPoint("clickedState")
+        .on("click")
+        .clear("dblclick");
+
+    const date = vl.markRect({strokeWidth: 2})
+        .encode(vl.x().fieldO("customer_state").title("Estado do Comprador"),
+            vl.y().fieldO("seller_state").title("Estado do Vendedor"),
+            vl.fill().fieldQ("orders")
+                .scale({
+                type: "log",
+                domain: [1, d3.max(ordersByStates, d => d.orders) || 10000],
+                scheme: "blues" // funciona bem em fundo escuro
+            })
+                .legend({
+                    title: "N° de Pedidos(Escala Log)", // <- muda aqui
+                    titleColor: "#e0e1dd",
+                    labelColor: "#e0e1dd"
+                }),
+            vl.stroke().if(click.empty(false), vl.value('black')).value(null),
+            vl.opacity().if(click, vl.value(1.0)).value(0.4),
+            vl.tooltip([
+                { field: "seller_state", type: "nominal", title: "Destino"},
+                { field: "customer_state", type: "nominal", title: "Origem" },
+                { field: "orders", type: "quantitative", title: "Pedidos", format: ".0f"}
+            ])
+        ).params(click)
+
+    let layerSpec = vl.layer([date,
+        vl.markText({     // move mais à esquerda
+            fontSize: 7,      // aumenta o tamanho
+            fontWeight: "bold",// deixa mais grosso
+            fill: "#10072c"    // cor branca (ou troque por outra mais escura se quiser)
+        })
+            .encode(
+                vl.opacity().if(click.empty(false), vl.value(1)).value(0),
+                vl.x().fieldO("customer_state"),
+                vl.y().fieldO("seller_state"),
+                vl.text().fieldQ("orders"),
+            )
+            .transform(vl.filter(click))])
+        .data(ordersByStates)
+        .padding({bottom: 60, left: 40, right: 40, top: 40})
+        .title({text: "Número de pedidos ao longo do tempo", font: "sans-serif", color: "#e0e1dd"})
+        .config({
+            background: "#0b051d",
+            axis: {
+                labelColor: "#e0e1dd",
+                titleColor: "#e0e1dd",
+                gridColor: "#3a506b"
+            }
+        }).toSpec()
+
+    const vegaSpec = vegaLite.compile(layerSpec).spec;
+
+    const view = new vega.View(vega.parse(vegaSpec))
+        .renderer("canvas").initialize("#heat_chart").run();
+
+    view.addEventListener("click", (event, item) => {
+        // Clona o filtro atual
+        const newFilter = { ...filter };
+
+        if (item && item.datum) {
+            newFilter.seller_state = item.datum.seller_state; // atualiza apenas geolocation_city
+            console.log("Você clicou no dado:", item.datum.seller_state);
+            renderAllCharts(newFilter, data, "heat_chart");
+        } else {
+            // Remove o campo geolocation_city se não houve clique com dado
+            newFilter.seller_state = "";
+            console.log("Você clicou no gráfico de barras, mas sem dado associado.");
+            renderAllCharts(newFilter, data, );
+        }
+    });
+
+    view.addEventListener("dblclick", () => {
+        const newFilter = { ...filter };
+        newFilter.seller_state = "";
+        console.log("Você clicou no gráfico de mapa, duas vezes.");
+        renderAllCharts(newFilter, data, );
+    });
+}
 
 function renderLineChart(filter, data) {
     let filteredData = filterDataByCategory(filter, data);
@@ -122,6 +223,7 @@ function renderBarChart(filter, data) {
     const click = vl
         .selectPoint("clickedBar")
         .on("click")
+        .clear("dblclick")
         .fields("city");
 
     const maxOrders = d3.max(ordersByCity, d => d.orders);
@@ -155,10 +257,9 @@ function renderBarChart(filter, data) {
             .transform(vl.filter(click))
     ])
         .data(ordersByCity)
-        .width(360)
-        .height(360)
-        .padding({ left: 65 })
-        .title({ text: "Cidades com Mais Pedidos", font: "sans-serif", color: "#e0e1dd" })
+        .width(340)
+        .padding({ left: 15 })
+        .title({ text: "Cidades com Mais Pedidos - Compradores", font: "sans-serif", color: "#e0e1dd" })
         .config({
             background: "#0b051d",
             axis: {
@@ -189,6 +290,15 @@ function renderBarChart(filter, data) {
         }
     });
 
+
+    view.addEventListener("dblclick", () => {
+        const newFilter = { ...filter };
+        newFilter.geolocation_city = "";
+        console.log("Você clicou no gráfico de barra, duas vezes.");
+        renderAllCharts(newFilter, data, );
+    });
+
+
 }
 
 function renderPieChart(filter, data) {
@@ -207,7 +317,6 @@ function renderPieChart(filter, data) {
         };
     });
 
-    // const click = vl.selectPoint().on("click").clear("dblclick").fields(["payment_type"]).bind("legend");]
     let click = vl.selectPoint()
         .on("click")
         .clear("dblclick")
@@ -278,6 +387,13 @@ function renderPieChart(filter, data) {
             renderAllCharts(newFilter, data);
         }
     });
+
+    view.addEventListener("dblclick", () => {
+        const newFilter = { ...filter };
+        newFilter.payment_type = "";
+        console.log("Você clicou no gráfico de mapa, duas vezes.");
+        renderAllCharts(newFilter, data, );
+    });
     /*
     .render()
     .then(view => {
@@ -315,7 +431,7 @@ async function renderMapChart(filter, data) {
                         scheme: "blues" // funciona bem em fundo escuro
                     })
                     .legend({
-                        title: "Log Número de Pedidos", // <- muda aqui
+                        title: "N° de Pedidos(Escala Log)", // <- muda aqui
                         titleColor: "#e0e1dd",
                         labelColor: "#e0e1dd"
                     }),
@@ -331,7 +447,7 @@ async function renderMapChart(filter, data) {
             .project(vl.projection("mercator"))
             .width(600)
             .height(600)
-            .title({ text: "Mapa do Log do Número de Pedidos", font: "sans-serif", color: "#e0e1dd" })
+            .title({ text: "Mapa do Número de Pedidos - Compradores", font: "sans-serif", color: "#e0e1dd" })
             .config({
                 background: "#0b051d",
                 axis: {
@@ -361,6 +477,13 @@ async function renderMapChart(filter, data) {
                 renderAllCharts(newFilter, data, );
             }
         });
+
+        view.addEventListener("dblclick", () => {
+            const newFilter = { ...filter };
+            newFilter.customer_state = "";
+            console.log("Você clicou no gráfico de mapa, duas vezes.");
+            renderAllCharts(newFilter, data, );
+        });
     } catch (err) {
         console.error("Erro ao renderizar o mapa:", err);
     }
@@ -375,28 +498,39 @@ function renderAllCharts(filter, data, chartClicked = null){
         renderLineChart(filter, data);
         renderBarChart(filter, data);
         renderMapChart(filter, data);
+        renderHeatChart(filter, data);
     }
 
     else if(chartClicked == "pie_chart"){
         renderLineChart(filter, data);
         renderBarChart(filter, data);
-        renderMapChart(filter, data)
+        renderMapChart(filter, data);
+        renderHeatChart(filter, data);
     }
 
     else if(chartClicked == "line_chart"){
         renderPieChart(filter, data);
         renderBarChart(filter, data);
         renderMapChart(filter, data);
+        renderHeatChart(filter, data);
     }
     else if (chartClicked == "bar_chart"){
         renderPieChart(filter, data);
         renderLineChart(filter, data);
         renderMapChart(filter, data);
+        renderHeatChart(filter, data);
     }
     else if (chartClicked == "map_chart"){
         renderPieChart(filter, data);
         renderLineChart(filter, data);
         renderBarChart(filter, data);
+        renderHeatChart(filter, data);
+    }
+    else if (chartClicked == "heat_chart"){
+        renderPieChart(filter, data);
+        renderLineChart(filter, data);
+        renderBarChart(filter, data);
+        renderMapChart(filter, data);
     }
     else{
         console.log(chartClicked)
