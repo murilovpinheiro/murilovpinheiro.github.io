@@ -57,8 +57,8 @@ function renderHeatChart(filter, data) {
             vl.stroke().if(click.empty(false), vl.value('black')).value(null),
             vl.opacity().if(click, vl.value(1.0)).value(0.4),
             vl.tooltip([
-                { field: "seller_state", type: "nominal", title: "Destino"},
-                { field: "customer_state", type: "nominal", title: "Origem" },
+                { field: "seller_state", type: "nominal", title: "Origem"},
+                { field: "customer_state", type: "nominal", title: "Destino" },
                 { field: "orders", type: "quantitative", title: "Pedidos", format: ".0f"}
             ])
         ).params(click)
