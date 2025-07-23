@@ -391,7 +391,7 @@ function renderPieChart(filter, data) {
     view.addEventListener("dblclick", () => {
         const newFilter = { ...filter };
         newFilter.payment_type = "";
-        console.log("Você clicou no gráfico de mapa, duas vezes.");
+        console.log("Você clicou no gráfico de pizza, duas vezes.");
         renderAllCharts(newFilter, data, );
     });
     /*
